@@ -986,7 +986,7 @@ local function addSky(name, bk, dn, ft, lf, rt, up)
 		return "rbxassetid://" .. n
 	end
 	table.insert(SKYBOXES, {
-		name = tostring(#SKYBOXES), -- нумерация: 1, 2, 3...
+		name = name,
 		preview = "rbxthumb://type=Asset&id=" .. ft .. "&w=150&h=150",
 		faces = {Bk = id(bk), Dn = id(dn), Ft = id(ft), Lf = id(lf), Rt = id(rt), Up = id(up)},
 	})
@@ -1809,8 +1809,12 @@ local function hornsApply(accessory, mod, texture)
 		if mesh then mesh.TextureId = "" end
 	else
 		handle.Material = Enum.Material.Plastic
-		handle.BrickColor = BrickColor.new(194)
-		if mesh then mesh.TextureId = texture end
+		handle.Color = Color3.new(1, 1, 1)
+		if mesh then
+			mesh.TextureId = texture
+			local tint = mod.v.Color or Color3.new(1, 1, 1)
+			mesh.VertexColor = Vector3.new(tint.R, tint.G, tint.B)
+		end
 	end
 	-- Fire остаётся дочерним объектом Handle в обоих режимах.
 end
@@ -1881,6 +1885,7 @@ FrozenMod = Module({
 	name = "Frozen Horns",
 	settings = {
 		{type = "toggle", name = "Neon", default = false},
+		{type = "color", name = "Color", default = Color3.new(1, 1, 1)},
 		{type = "color", name = "Neon Color", default = Color3.fromRGB(20, 180, 255)},
 	},
 	onToggle = function(on)
@@ -1928,6 +1933,7 @@ FieryMod = Module({
 	name = "Fiery Horns",
 	settings = {
 		{type = "toggle", name = "Neon", default = false},
+		{type = "color", name = "Color", default = Color3.new(1, 1, 1)},
 		{type = "color", name = "Neon Color", default = Color3.fromRGB(255, 105, 34)},
 	},
 	onToggle = function(on)

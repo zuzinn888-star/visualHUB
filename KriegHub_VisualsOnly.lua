@@ -1896,6 +1896,143 @@ end
 Register(sec, name, row)
 return row, labels
 end
+-- Native visual controls for the Krieg Hub sections.
+function Section:VisualColor(cfg)
+local color = cfg.Default or Color3.new(1, 1, 1)
+local h, s, v = color:ToHSV()
+local wrap = Create("Frame", {Size = UDim2.new(1, 0, 0, 154), BackgroundTransparency = 1, Parent = self.Content})
+Text(wrap, cfg.Name, 13, "Text", FONT.Semi, {Size = UDim2.new(1, 0, 0, 20)})
+local swatch = Create("Frame", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Size = UDim2.fromOffset(28, 19), BackgroundColor3 = color, Parent = wrap}, {Corner(5)})
+Stroke(swatch)
+local sv = Create("TextButton", {Position = UDim2.fromOffset(0, 25), Size = UDim2.new(1, 0, 0, 96), BackgroundColor3 = Color3.fromHSV(h, 1, 1), Text = "", AutoButtonColor = false, ClipsDescendants = true, Parent = wrap}, {Corner(7)})
+local white = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = sv})
+Create("UIGradient", {Transparency = NumberSequence.new(0, 1), Parent = white})
+local black = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Parent = sv})
+Create("UIGradient", {Rotation = 90, Transparency = NumberSequence.new(1, 0), Parent = black})
+local svKnob = Create("Frame", {AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1, ZIndex = 3, Parent = sv}, {Round()})
+Create("UIStroke", {Color = Color3.new(1, 1, 1), Thickness = 2, Parent = svKnob})
+local hue = Create("TextButton", {Position = UDim2.fromOffset(0, 130), Size = UDim2.new(1, 0, 0, 13), BackgroundColor3 = Color3.new(1, 1, 1), Text = "", AutoButtonColor = false, Parent = wrap}, {Round()})
+local stops = {}
+for i = 0, 6 do table.insert(stops, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV((i % 6) / 6, 1, 1))) end
+Create("UIGradient", {Color = ColorSequence.new(stops), Parent = hue})
+local hueKnob = Create("Frame", {AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(8, 19), BackgroundColor3 = Color3.new(1, 1, 1), Parent = hue}, {Corner(4)})
+Create("UIStroke", {Color = Color3.new(0, 0, 0), Transparency = .45, Parent = hueKnob})
+local api = {Type = "Input", Value = ""}
+local function hex(c)
+return string.format("#%02X%02X%02X", math.floor(c.R * 255 + .5), math.floor(c.G * 255 + .5), math.floor(c.B * 255 + .5))
+end
+local function render()
+sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+svKnob.Position = UDim2.fromScale(s, 1 - v)
+hueKnob.Position = UDim2.fromScale(h, .5)
+swatch.BackgroundColor3 = color
+api.Value = hex(color)
+end
+function api:Set(value, silent)
+local c = value
+if typeof(value) == "string" then
+local digits = value:gsub("#", "")
+if #digits ~= 6 or not digits:match("^%x+$") then return end
+c = Color3.fromRGB(tonumber(digits:sub(1, 2), 16), tonumber(digits:sub(3, 4), 16), tonumber(digits:sub(5, 6), 16))
+end
+if typeof(c) ~= "Color3" then return end
+color = c
+h, s, v = c:ToHSV()
+render()
+if not silent and cfg.Callback then task.spawn(cfg.Callback, color) end
+end
+render()
+local dragging, activeInput, oldScroll = nil, nil, nil
+local scroll = wrap:FindFirstAncestorWhichIsA("ScrollingFrame")
+local function stop()
+dragging, activeInput = nil, nil
+if scroll and oldScroll ~= nil then scroll.ScrollingEnabled = oldScroll; oldScroll = nil end
+end
+local function update(pos)
+if not dragging then return end
+if dragging == "sv" then
+s = math.clamp((pos.X - sv.AbsolutePosition.X) / math.max(sv.AbsoluteSize.X, 1), 0, 1)
+v = 1 - math.clamp((pos.Y - sv.AbsolutePosition.Y) / math.max(sv.AbsoluteSize.Y, 1), 0, 1)
+else
+h = math.clamp((pos.X - hue.AbsolutePosition.X) / math.max(hue.AbsoluteSize.X, 1), 0, .999)
+end
+color = Color3.fromHSV(h, s, v)
+render()
+if cfg.Callback then cfg.Callback(color) end
+end
+local function begin(kind, input)
+if not IsClick(input) then return end
+dragging, activeInput = kind, input
+if scroll then oldScroll = scroll.ScrollingEnabled; scroll.ScrollingEnabled = false end
+update(input.Position)
+end
+sv.InputBegan:Connect(function(i) begin("sv", i) end)
+hue.InputBegan:Connect(function(i) begin("hue", i) end)
+Connect(UIS.InputChanged, function(i)
+if not dragging then return end
+if i.UserInputType == Enum.UserInputType.MouseMovement and activeInput.UserInputType == Enum.UserInputType.MouseButton1 then update(i.Position) end
+if i.UserInputType == Enum.UserInputType.Touch and i == activeInput then update(i.Position) end
+end)
+Connect(UIS.InputEnded, function(i)
+if dragging and i == activeInput then stop() end
+end)
+Register(self, cfg.Name, wrap)
+if cfg.Flag then Krieg.Flags[cfg.Flag] = api end
+return api
+end
+
+function Section:VisualGallery(cfg)
+local items = cfg.Items or {}
+local selected = cfg.Default or 1
+local wrap = Create("Frame", {Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = self.Content}, {List(5)})
+Text(wrap, cfg.Name, 13, "Text", FONT.Semi, {Size = UDim2.new(1, 0, 0, 20)})
+local gridFrame = Create("Frame", {Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 2, Parent = wrap})
+local layout = Create("UIGridLayout", {CellPadding = UDim2.fromOffset(6, 6), CellSize = UDim2.new(.5, -3, 0, 66), SortOrder = Enum.SortOrder.LayoutOrder, Parent = gridFrame})
+local cards = {}
+local api = {Type = "Dropdown", Value = selected}
+local function paint()
+for index, card in ipairs(cards) do
+card.Stroke.Color = index == selected and Current.Accent or Current.Stroke
+card.Stroke.Thickness = index == selected and 2 or 1
+end
+end
+function api:Set(value, silent)
+local index = tonumber(value)
+if not index and typeof(value) == "string" then
+for i, item in ipairs(items) do if item.name == value then index = i; break end end
+end
+if not index or not items[index] then return end
+selected = index
+api.Value = index
+paint()
+if not silent and cfg.Callback then task.spawn(cfg.Callback, index) end
+end
+for i, item in ipairs(items) do
+local tile = Create("ImageButton", {Image = item.preview or "", ScaleType = Enum.ScaleType.Crop, BackgroundColor3 = Current.Card2, AutoButtonColor = false, ClipsDescendants = true, LayoutOrder = i, Parent = gridFrame}, {Corner(8)})
+if not item.preview then
+local colors = item.colors or {Color3.fromRGB(90, 160, 215), Color3.fromRGB(205, 228, 245)}
+tile.BackgroundColor3 = colors[1]
+Create("UIGradient", {Rotation = 90, Color = ColorSequence.new(colors[1], colors[2]), Parent = tile})
+end
+local shade = Create("Frame", {AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 22), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = .28, BorderSizePixel = 0, Parent = tile})
+Text(shade, tostring(item.name or i), 11, nil, FONT.Semi, {Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), NoTr = true})
+local stroke = Stroke(tile)
+cards[i] = {Stroke = stroke}
+tile.MouseButton1Click:Connect(function() api:Set(i) end)
+end
+local function resize()
+local width = gridFrame.AbsoluteSize.X / UScale()
+layout.CellSize = width < 230 and UDim2.new(1, 0, 0, 66) or UDim2.new(.5, -3, 0, 66)
+end
+gridFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
+task.defer(resize)
+OnTheme(paint)
+paint()
+Register(self, cfg.Name, wrap)
+if cfg.Flag then Krieg.Flags[cfg.Flag] = api end
+return api
+end
+
 function Section:Toggle(cfg)
 local state = cfg.Default and true or false
 local row = RowWithText(self, cfg.Name, cfg.Description, 60)
@@ -4916,7 +5053,7 @@ local function addSky(name, bk, dn, ft, lf, rt, up)
 		return "rbxassetid://" .. n
 	end
 	table.insert(SKYBOXES, {
-		name = tostring(#SKYBOXES), -- нумерация: 1, 2, 3...
+		name = name,
 		preview = "rbxthumb://type=Asset&id=" .. ft .. "&w=150&h=150",
 		faces = {Bk = id(bk), Dn = id(dn), Ft = id(ft), Lf = id(lf), Rt = id(rt), Up = id(up)},
 	})
@@ -5686,7 +5823,7 @@ end
 CrownMod = Module({
 	name = "Neon Crown",
 	settings = {
-		{type = "toggle", name = "Match China Hat", default = true},
+		{type = "toggle", name = "Match China Hat", default = false},
 		{type = "color", name = "Color", default = ACCENT},
 		{type = "toggle", name = "Rainbow", default = false},
 		{type = "slider", name = "Size", min = 0.6, max = 1.6, step = 0.1, default = 1},
@@ -5739,8 +5876,12 @@ local function hornsApply(accessory, mod, texture)
 		if mesh then mesh.TextureId = "" end
 	else
 		handle.Material = Enum.Material.Plastic
-		handle.BrickColor = BrickColor.new(194)
-		if mesh then mesh.TextureId = texture end
+		handle.Color = Color3.new(1, 1, 1)
+		if mesh then
+			mesh.TextureId = texture
+			local tint = mod.v.Color or Color3.new(1, 1, 1)
+			mesh.VertexColor = Vector3.new(tint.R, tint.G, tint.B)
+		end
 	end
 	-- Fire остаётся дочерним объектом Handle в обоих режимах.
 end
@@ -5811,6 +5952,7 @@ FrozenMod = Module({
 	name = "Frozen Horns",
 	settings = {
 		{type = "toggle", name = "Neon", default = false},
+		{type = "color", name = "Color", default = Color3.new(1, 1, 1)},
 		{type = "color", name = "Neon Color", default = Color3.fromRGB(20, 180, 255)},
 	},
 	onToggle = function(on)
@@ -5858,6 +6000,7 @@ FieryMod = Module({
 	name = "Fiery Horns",
 	settings = {
 		{type = "toggle", name = "Neon", default = false},
+		{type = "color", name = "Color", default = Color3.new(1, 1, 1)},
 		{type = "color", name = "Neon Color", default = Color3.fromRGB(255, 105, 34)},
 	},
 	onToggle = function(on)
@@ -7158,36 +7301,15 @@ local Window = Krieg:CreateWindow({
 Window:Group("OVERVIEW")
 Window:CreateHome({
 	Badge = "KRIEG MEMBER",
-	Changelog = {"Krieg Hub visuals", "Screen, World, Player and HUD", "22 visual effects"},
+	Changelog = {"Krieg Hub visuals", "Screen, World and Player", "22 visual effects"},
 })
 -- Вкладки визуалов внутри оригинального окна Krieg Hub.
 function Krieg:AddVisualTabs(window)
 	local visual = self.Visuals
 	if not visual then return end
 
-	local function colorToHex(color)
-		return string.format("#%02X%02X%02X", math.floor(color.R * 255 + 0.5), math.floor(color.G * 255 + 0.5), math.floor(color.B * 255 + 0.5))
-	end
-	local function hexToColor(value)
-		local hex = tostring(value):gsub("%s", ""):gsub("#", "")
-		if #hex ~= 6 or not hex:match("^%x+$") then return nil end
-		return Color3.fromRGB(tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16))
-	end
 	local function addColor(section, name, initial, apply, flag)
-		local input
-		input = section:Input({
-			Name = name .. " (#RRGGBB)", Default = colorToHex(initial), Placeholder = "#RRGGBB", Flag = flag,
-			Callback = function(value)
-				local color = hexToColor(value)
-				if color then
-					apply(color)
-					input:Set(colorToHex(color), true)
-				else
-					Krieg:Notify({Title = name, Content = "Use a color like #40E0D0", Icon = "x", Duration = 3})
-				end
-			end,
-		})
-		return input
+		return section:VisualColor({Name = name, Default = initial, Flag = flag, Callback = apply})
 	end
 	local function addModule(tab, mod)
 		local section = tab:Section({Name = mod.name, Icon = "sparkles"})
@@ -7219,12 +7341,7 @@ function Krieg:AddVisualTabs(window)
 					if index then mod.changed(name, index) end
 				end})
 			elseif setting.type == "gallery" then
-				local options = {}
-				for index, item in ipairs(setting.items) do options[index] = tostring(item.name or item.Name or index) end
-				section:Dropdown({Name = name, Options = options, Default = options[current], Flag = settingFlag, Callback = function(v)
-					local index = table.find(options, v)
-					if index then mod.changed(name, index) end
-				end})
+				section:VisualGallery({Name = name, Items = setting.items, Default = current, Flag = settingFlag, Callback = function(index) mod.changed(name, index) end})
 			elseif setting.type == "color" then
 				addColor(section, name, current, function(color) mod.changed(name, color) end, settingFlag)
 			elseif setting.type == "input" then
@@ -7249,13 +7366,12 @@ function Krieg:AddVisualTabs(window)
 	for _, mod in ipairs(visual.World) do addModule(worldTab, mod) end
 	for _, mod in ipairs(visual.Player) do addModule(playerTab, mod) end
 
-	local hudTab = window:Tab({Name = "Visual HUD", Icon = "eye"})
-	local style = hudTab:Section({Name = "Accent", Icon = "sparkles"})
+	local style = screenTab:Section({Name = "Visual UI colors", Icon = "sparkles"})
 	addColor(style, "Visual accent", Color3.fromRGB(72, 226, 192), visual.setAccent, "VisualHUDAccent")
-	local watermark = hudTab:Section({Name = "Watermark", Icon = "monitor"})
+	local watermark = screenTab:Section({Name = "Watermark colors", Icon = "monitor"})
 	addColor(watermark, "Accent", Color3.fromRGB(72, 226, 192), visual.setWatermarkAccent, "VisualWatermarkAccent")
 	addColor(watermark, "Background", Color3.fromRGB(140, 172, 198), visual.setWatermarkBackground, "VisualWatermarkBackground")
-	local binds = hudTab:Section({Name = "Keybinds", Icon = "eye"})
+	local binds = screenTab:Section({Name = "Keybind colors", Icon = "eye"})
 	addColor(binds, "Accent", Color3.fromRGB(72, 226, 192), visual.setKeybindAccent, "VisualKeybindAccent")
 	addColor(binds, "Background", Color3.fromRGB(16, 20, 24), visual.setKeybindBackground, "VisualKeybindBackground")
 end
