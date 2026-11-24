@@ -1942,11 +1942,9 @@ render()
 if not silent and cfg.Callback then task.spawn(cfg.Callback, color) end
 end
 render()
-local dragging, activeInput, oldScroll = nil, nil, nil
-local scroll = wrap:FindFirstAncestorWhichIsA("ScrollingFrame")
+local dragging, activeInput = nil, nil
 local function stop()
 dragging, activeInput = nil, nil
-if scroll and oldScroll ~= nil then scroll.ScrollingEnabled = oldScroll; oldScroll = nil end
 end
 local function update(pos)
 if not dragging then return end
@@ -1963,7 +1961,6 @@ end
 local function begin(kind, input)
 if not IsClick(input) then return end
 dragging, activeInput = kind, input
-if scroll then oldScroll = scroll.ScrollingEnabled; scroll.ScrollingEnabled = false end
 update(input.Position)
 end
 sv.InputBegan:Connect(function(i) begin("sv", i) end)
@@ -2543,6 +2540,8 @@ self.WallImage = on and image or nil
 for _, w in ipairs(self.Walls) do
 local show = on and (not w.mini or S.WallMini)
 w[1].Image = on and image or ""
+w[1].ImageRectSize = Vector2.zero
+w[1].ImageRectOffset = Vector2.zero
 w[1].Visible = show
 w[2].Visible = show
 w[2].BackgroundTransparency = 1 - S.WallDim
@@ -2562,6 +2561,10 @@ return tostring(h)
 end
 local UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 local function fetch(req, url)
+if type(req) ~= "function" then
+local ok, body = pcall(game.HttpGet, game, url)
+return ok and type(body) == "string" and body or nil
+end
 for _ = 1, 6 do
 local ok, res = pcall(req, {
 Url = url, Method = "GET",
@@ -2611,9 +2614,9 @@ if id then cb(true, "rbxassetid://" .. id) return end
 if not src:match("^https?://") then
 if src:match("^[%w%-]+%.[%w%.%-]+/") then src = "https://" .. src else cb(false, "This is not a link") return end
 end
-local getAsset = getcustomasset or getsynasset
+local getAsset = getcustomasset or getsynasset or getexecutorasset
 local req = request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request)
-if type(getAsset) ~= "function" or type(writefile) ~= "function" or type(req) ~= "function" then
+if type(getAsset) ~= "function" or type(writefile) ~= "function" then
 cb(false, "Your executor can't load images from links")
 return
 end
@@ -2651,10 +2654,10 @@ end
 function Krieg:ResolveWallpaper(src, cb) Wall.resolve(src, cb) end
 local WALL_BASE = "https://raw.githubusercontent.com/zuzinn888-star/THROWFOODFOR/refs/heads/main/"
 Krieg.ThemeWalls = {
-["Sakura"]    = { file = "sakura",    sheets = 4, frames = 60, fps = 8 },
-["Halloween"] = { file = "halloween", sheets = 3, frames = 40, fps = 8 },
-["Rain"]      = { file = "rain",      sheets = 4, frames = 48, fps = 8 },
-["New Year"]  = { file = "newyear",   sheets = 3, frames = 39, fps = 8 },
+["Sakura"]    = { file = "sakura_hd.jpg" },
+["Halloween"] = { file = "halloween_hd.jpg" },
+["Rain"]      = { file = "rain_hd.jpg" },
+["New Year"]  = { file = "newyear_hd.jpg" },
 }
 local SHEET_C, SHEET_R, FRAME_W, FRAME_H = 3, 5, 320, 180
 local animToken = 0
@@ -2675,16 +2678,9 @@ function Krieg:LoadThemeWall(name, cb)
 local def = self.ThemeWalls[name]
 if not def then cb(nil) return end
 if self.ThemeWallAssets[name] then cb(self.ThemeWallAssets[name]) return end
-local assets, left, failed = {}, def.sheets, false
-for i = 1, def.sheets do
-Wall.resolve(WALL_BASE .. def.file .. "_" .. i .. ".jpg", function(ok, res)
-if ok then assets[i] = res else failed = true end
-left -= 1
-if left == 0 then
-if failed then cb(nil) else self.ThemeWallAssets[name] = assets; cb(assets) end
-end
+Wall.resolve(WALL_BASE .. def.file, function(ok, res)
+if ok then self.ThemeWallAssets[name] = res; cb(res) else cb(nil) end
 end)
-end
 end
 function Krieg:PlayThemeWall(name)
 stopAnim()
@@ -2692,29 +2688,10 @@ if S.Wallpaper ~= "" or S.ThemeWall == false then return end
 local def = self.ThemeWalls[name]
 if not def then self:ApplyWallpaper(nil) return end
 local my = animToken
-self:LoadThemeWall(name, function(assets)
-if my ~= animToken or not assets then return end
-self:ApplyWallpaper(assets[1])
+self:LoadThemeWall(name, function(asset)
+if my ~= animToken or not asset then return end
+self:ApplyWallpaper(asset)
 self.AnimWall = name
-local per = SHEET_C * SHEET_R
-local size = Vector2.new(FRAME_W, FRAME_H)
-local lastSheet = 0
-task.spawn(function()
-local t0 = os.clock()
-while my == animToken and self.Gui and self.Gui.Parent do
-local f = math.floor((os.clock() - t0) * def.fps) % def.frames
-local sheet = math.floor(f / per) + 1
-local k = f % per
-local off = Vector2.new((k % SHEET_C) * FRAME_W, math.floor(k / SHEET_C) * FRAME_H)
-for _, w in ipairs(self.Walls) do
-if sheet ~= lastSheet then w[1].Image = assets[sheet] end
-w[1].ImageRectSize = size
-w[1].ImageRectOffset = off
-end
-lastSheet = sheet
-task.wait(1 / def.fps)
-end
-end)
 end)
 end
 function Krieg:CreateWindow(o)
@@ -3257,11 +3234,9 @@ Create("UIGradient", { Rotation = 35, Color = ColorSequence.new({ ColorSequenceK
 local prev = Create("ImageLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Crop, Image = "", Visible = false, Parent = b }, { Corner(12) })
 local def = Krieg.ThemeWalls and Krieg.ThemeWalls[name]
 if def then
-Wall.resolve(WALL_BASE .. def.file .. "_1.jpg", function(ok, res)
+Wall.resolve(WALL_BASE .. def.file, function(ok, res)
 if ok and prev.Parent then
 prev.Image = res
-prev.ImageRectSize = Vector2.new(FRAME_W, FRAME_H)
-prev.ImageRectOffset = Vector2.new(FRAME_W, FRAME_H * 2)
 prev.Visible = true
 end
 end)
@@ -3474,7 +3449,7 @@ wp:Slider({ Name = "Darken", Min = 0, Max = .9, Increment = .05, Default = S.Wal
 Krieg:SetWallDim(v)
 Store.save()
 end })
-wp:Toggle({ Name = "Live theme wallpapers", Default = S.ThemeWall, Callback = function(v)
+wp:Toggle({ Name = "Season wallpapers", Default = S.ThemeWall, Callback = function(v)
 Store.set("ThemeWall", v)
 if v then Krieg:PlayThemeWall(Krieg.CurrentTheme) elseif S.Wallpaper == "" then Krieg:StopThemeWall() end
 end })
@@ -5065,7 +5040,7 @@ addSky("Sky 4", 225469345, 225469349, 225469359, 225469364, 225469372, 225469380
 addSky("Red", 1012890, 1012891, 1012887, 1012889, 1012888, 1014449)
 addSky("Sunset", 323494035, 323494368, 323494130, 323494252, 323494067, 323493360)
 
-local skyState = {sky = nil, hidden = {}}
+local skyState = {sky = nil, hidden = {}, guard = nil, guardStep = nil}
 local SkyMod
 local function applySky()
 	if not SkyMod.enabled then
@@ -5095,18 +5070,36 @@ SkyMod = Module({
 		if on then
 			for _, c in ipairs(Lighting:GetChildren()) do
 				if c:IsA("Sky") then
-					table.insert(skyState.hidden, c)
+					if not table.find(skyState.hidden, c) then table.insert(skyState.hidden, c) end
 					c.Parent = nil
 				end
 			end
 			applySky()
+			skyState.guard = Lighting.ChildAdded:Connect(function(c)
+				if not SkyMod.enabled or not c:IsA("Sky") or c.Name == "AreVisualsSky" then return end
+				c.Parent = nil
+				if not skyState.sky or skyState.sky.Parent ~= Lighting then applySky() end
+			end)
+			local elapsed = 0
+			skyState.guardStep = RunService.Heartbeat:Connect(function(dt)
+				elapsed += dt
+				if elapsed < 0.5 or not SkyMod.enabled then return end
+				elapsed = 0
+				if not skyState.sky or skyState.sky.Parent ~= Lighting then applySky(); return end
+				for face, texture in pairs(SKYBOXES[SkyMod.v.Sky].faces) do
+					local property = "Skybox" .. face
+					if skyState.sky[property] ~= texture then skyState.sky[property] = texture end
+				end
+			end)
 		else
+			if skyState.guard then skyState.guard:Disconnect(); skyState.guard = nil end
+			if skyState.guardStep then skyState.guardStep:Disconnect(); skyState.guardStep = nil end
 			if skyState.sky then
 				skyState.sky:Destroy()
 				skyState.sky = nil
 			end
 			for _, c in ipairs(skyState.hidden) do
-				c.Parent = Lighting
+				if c.Parent == nil then pcall(function() c.Parent = Lighting end) end
 			end
 			skyState.hidden = {}
 		end
@@ -6340,8 +6333,39 @@ local SHADERS = {
 		bloom = {0.8, 38, 0.72}, rays = {0.12, 0.6}},
 }
 
-local shader = {snap = nil, atmo = nil, atmoCreated = false, atmoSnap = nil, cc = nil, bloom = nil, rays = nil, tweens = {}, token = 0}
+local shader = {snap = nil, atmo = nil, atmoCreated = false, atmoSnap = nil, cc = nil, bloom = nil, rays = nil, tweens = {}, token = 0, sky = nil, hiddenSkies = {}, skyGuard = nil, lightGuard = nil}
 local ShaderMod
+
+local darkShaderSky = { ["Night Moon"] = true, ["Aurora"] = true, ["Cyberpunk"] = true, ["Blood Moon"] = true, ["Synthwave"] = true, ["Horror"] = true, ["Galaxy"] = true }
+local function clearShaderSky()
+	if shader.skyGuard then shader.skyGuard:Disconnect(); shader.skyGuard = nil end
+	if shader.sky then shader.sky:Destroy(); shader.sky = nil end
+	for _, old in ipairs(shader.hiddenSkies) do
+		if old.Parent == nil then pcall(function() old.Parent = Lighting end) end
+	end
+	shader.hiddenSkies = {}
+end
+local function applyShaderSky()
+	clearShaderSky()
+	if not ShaderMod.enabled or SkyMod.enabled then return end
+	local preset = SHADERS[ShaderMod.v.Preset]
+	if not preset or not darkShaderSky[preset.name] then return end
+	for _, old in ipairs(Lighting:GetChildren()) do
+		if old:IsA("Sky") then
+			table.insert(shader.hiddenSkies, old)
+			old.Parent = nil
+		end
+	end
+	local sky = Instance.new("Sky")
+	sky.Name = "AreVisualsShaderSky"
+	for face, texture in pairs(SKYBOXES[4].faces) do sky["Skybox" .. face] = texture end
+	sky.Parent = Lighting
+	shader.sky = sky
+	shader.skyGuard = Lighting.ChildAdded:Connect(function(child)
+		if not ShaderMod.enabled or SkyMod.enabled or not child:IsA("Sky") or child == shader.sky then return end
+		child.Parent = nil
+	end)
+end
 
 local function shaderCancel()
 	for _, t in ipairs(shader.tweens) do
@@ -6409,9 +6433,38 @@ ShaderMod = Module({
 				shader.cc = new("ColorCorrectionEffect", {Name = "AreVisualsShaderCC"}, Lighting)
 				shader.bloom = new("BloomEffect", {Name = "AreVisualsShaderBloom", Intensity = 0, Size = 24, Threshold = 1}, Lighting)
 				shader.rays = new("SunRaysEffect", {Name = "AreVisualsShaderRays", Intensity = 0, Spread = 0.5}, Lighting)
-				shaderApply(true)
+				shaderApply(false)
+				applyShaderSky()
+				local acc = 0
+				shader.lightGuard = RunService.Heartbeat:Connect(function(dt)
+					acc += dt
+					if acc < 0.2 or not ShaderMod.enabled then return end
+					acc = 0
+					local preset = SHADERS[ShaderMod.v.Preset]
+					if darkShaderSky[preset.name] and not SkyMod.enabled then
+						if not shader.sky or shader.sky.Parent ~= Lighting then
+							applyShaderSky()
+						else
+							for face, texture in pairs(SKYBOXES[4].faces) do
+								local property = "Skybox" .. face
+								if shader.sky[property] ~= texture then shader.sky[property] = texture end
+							end
+						end
+					end
+					if math.abs(Lighting.ClockTime - preset.clock) > 0.02 then Lighting.ClockTime = preset.clock end
+					if math.abs(Lighting.Brightness - preset.bright) > 0.02 then Lighting.Brightness = preset.bright end
+					if Lighting.Ambient ~= preset.ambient then Lighting.Ambient = preset.ambient end
+					if Lighting.OutdoorAmbient ~= preset.outdoor then Lighting.OutdoorAmbient = preset.outdoor end
+					if shader.atmo and shader.atmo.Parent == Lighting then
+						for property, value in pairs(preset.atmo) do
+							if shader.atmo[property] ~= value then shader.atmo[property] = value end
+						end
+					end
+				end)
 			end)
 		else
+			if shader.lightGuard then shader.lightGuard:Disconnect(); shader.lightGuard = nil end
+			clearShaderSky()
 			shaderCancel()
 			local cc, atmo, bloom, rays = shader.cc, shader.atmo, shader.bloom, shader.rays
 			if cc then
@@ -6446,7 +6499,8 @@ ShaderMod = Module({
 		end
 	end,
 	onChange = function()
-		shaderApply(true)
+		shaderApply(false)
+		applyShaderSky()
 	end,
 })
 
@@ -7273,16 +7327,11 @@ DbdMod = Module({
 		cursorGui:Destroy()
 	end
 	return {
-		Screen = {AspectMod, DbdMod, WatermarkMod, KeybindsMod, CursorMod},
+		Screen = {AspectMod, DbdMod, CursorMod},
 		World = {WeatherMod, SnowMod, SkyMod, ShaderMod, GfxMod, PotatoMod, JumpMod},
 		Player = {ChamsMod, HatMod, CrownMod, FrozenMod, FieryMod, AuraMod, TrailMod, PetsMod, SkinMod, StreamerMod},
 		setEnabled = setEnabled,
 		refreshKeybinds = refreshKeybinds,
-		setAccent = setAccent,
-		setWatermarkAccent = function(c) wmAccent = c end,
-		setWatermarkBackground = function(c) wm.BackgroundColor3 = c end,
-		setKeybindAccent = function(c) kbAccent = c; refreshKeybinds() end,
-		setKeybindBackground = function(c) kb.BackgroundColor3 = c end,
 		destroy = destroyVisuals,
 	}
 end
@@ -7301,15 +7350,47 @@ local Window = Krieg:CreateWindow({
 Window:Group("OVERVIEW")
 Window:CreateHome({
 	Badge = "KRIEG MEMBER",
-	Changelog = {"Krieg Hub visuals", "Screen, World and Player", "22 visual effects"},
+	Changelog = {"Krieg Hub visuals", "Screen, World and Player", "20 visual effects"},
 })
 -- Вкладки визуалов внутри оригинального окна Krieg Hub.
 function Krieg:AddVisualTabs(window)
 	local visual = self.Visuals
 	if not visual then return end
-
-	local function addColor(section, name, initial, apply, flag)
-		return section:VisualColor({Name = name, Default = initial, Flag = flag, Callback = apply})
+	local stateFile = self.ConfigFolder .. "/visuals.json"
+	local saveQueued = false
+	local loading = false
+	local function queueSave()
+		if loading or not FS_OK or saveQueued then return end
+		saveQueued = true
+		task.delay(0.7, function()
+			saveQueued = false
+			pcall(function()
+				Krieg:_Ensure()
+				local flags = {}
+				for flag, api in pairs(Krieg.Flags) do
+					if flag:sub(1, 6) == "Visual" then
+						local value = api.Value
+						if typeof(value) == "EnumItem" then value = {__key = value.Name} end
+						flags[flag] = value
+					end
+				end
+				writefile(stateFile, HttpService:JSONEncode(flags))
+			end)
+		end)
+	end
+	function self:RestoreVisualState()
+		if not FS_OK or not isfile(stateFile) then return end
+		local ok, flags = pcall(function() return HttpService:JSONDecode(readfile(stateFile)) end)
+		if not ok or type(flags) ~= "table" then return end
+		loading = true
+		for flag, value in pairs(flags) do
+			local api = Krieg.Flags[flag]
+			if api then
+				if type(value) == "table" and value.__key then value = Enum.KeyCode[value.__key] end
+				pcall(api.Set, api, value)
+			end
+		end
+		loading = false
 	end
 	local function addModule(tab, mod)
 		local section = tab:Section({Name = mod.name, Icon = "sparkles"})
@@ -7317,6 +7398,10 @@ function Krieg:AddVisualTabs(window)
 		local enableControl
 		if not mod.noToggle then
 			enableControl = section:Toggle({Name = "Enabled", Default = mod.enabled, Flag = flagPrefix .. "Enabled", Callback = function(on)
+				if on and mod.name == "Sky Shaders" then
+					local skybox = Krieg.Flags.VisualSkyboxEnabled
+					if skybox and skybox.Value then skybox:Set(false) end
+				end
 				local ok, err = pcall(visual.setEnabled, mod, on)
 				if not ok then
 					pcall(visual.setEnabled, mod, not on)
@@ -7324,6 +7409,7 @@ function Krieg:AddVisualTabs(window)
 					enableControl:Set(not on, true)
 					Krieg:Notify({Title = mod.name, Content = tostring(err), Icon = "x", Duration = 5})
 				end
+				queueSave()
 			end})
 		end
 		for _, setting in ipairs(mod.settings) do
@@ -7331,27 +7417,28 @@ function Krieg:AddVisualTabs(window)
 			local current = mod.v[name]
 			local settingFlag = flagPrefix .. name:gsub("%W", "")
 			if setting.type == "toggle" then
-				section:Toggle({Name = name, Default = current, Flag = settingFlag, Callback = function(v) mod.changed(name, v) end})
+				section:Toggle({Name = name, Default = current, Flag = settingFlag, Callback = function(v) mod.changed(name, v); queueSave() end})
 			elseif setting.type == "slider" or setting.type == "stepped" then
-				section:Slider({Name = name, Min = setting.min, Max = setting.max, Increment = setting.step or 1, Default = current, Flag = settingFlag, Callback = function(v) mod.changed(name, v) end})
+				section:Slider({Name = name, Min = setting.min, Max = setting.max, Increment = setting.step or 1, Default = current, Flag = settingFlag, Callback = function(v) mod.changed(name, v); queueSave() end})
 			elseif setting.type == "list" then
 				local options = setting.options
 				section:Dropdown({Name = name, Options = options, Default = options[current], Flag = settingFlag, Callback = function(v)
 					local index = table.find(options, v)
-					if index then mod.changed(name, index) end
+					if index then mod.changed(name, index); queueSave() end
 				end})
 			elseif setting.type == "gallery" then
-				section:VisualGallery({Name = name, Items = setting.items, Default = current, Flag = settingFlag, Callback = function(index) mod.changed(name, index) end})
+				section:VisualGallery({Name = name, Items = setting.items, Default = current, Flag = settingFlag, Callback = function(index) mod.changed(name, index); queueSave() end})
 			elseif setting.type == "color" then
-				addColor(section, name, current, function(color) mod.changed(name, color) end, settingFlag)
+				section:VisualColor({Name = name, Default = current, Flag = settingFlag, Callback = function(color) mod.changed(name, color); queueSave() end})
 			elseif setting.type == "input" then
-				section:Input({Name = name, Default = current, Placeholder = setting.placeholder or "...", Flag = settingFlag, Callback = function(v) mod.changed(name, v) end})
+				section:Input({Name = name, Default = current, Placeholder = setting.placeholder or "...", Flag = settingFlag, Callback = function(v) mod.changed(name, v); queueSave() end})
 			end
 		end
 		if not mod.noBind and mod.key then
 			section:Keybind({Name = "Bind", Default = mod.key, Flag = flagPrefix .. "Bind", Changed = function(key)
 				mod.key = key
 				visual.refreshKeybinds()
+				queueSave()
 			end, Callback = function()
 				if enableControl then enableControl:Set(not enableControl.Value) end
 			end})
@@ -7366,14 +7453,6 @@ function Krieg:AddVisualTabs(window)
 	for _, mod in ipairs(visual.World) do addModule(worldTab, mod) end
 	for _, mod in ipairs(visual.Player) do addModule(playerTab, mod) end
 
-	local style = screenTab:Section({Name = "Visual UI colors", Icon = "sparkles"})
-	addColor(style, "Visual accent", Color3.fromRGB(72, 226, 192), visual.setAccent, "VisualHUDAccent")
-	local watermark = screenTab:Section({Name = "Watermark colors", Icon = "monitor"})
-	addColor(watermark, "Accent", Color3.fromRGB(72, 226, 192), visual.setWatermarkAccent, "VisualWatermarkAccent")
-	addColor(watermark, "Background", Color3.fromRGB(140, 172, 198), visual.setWatermarkBackground, "VisualWatermarkBackground")
-	local binds = screenTab:Section({Name = "Keybind colors", Icon = "eye"})
-	addColor(binds, "Accent", Color3.fromRGB(72, 226, 192), visual.setKeybindAccent, "VisualKeybindAccent")
-	addColor(binds, "Background", Color3.fromRGB(16, 20, 24), visual.setKeybindBackground, "VisualKeybindBackground")
 end
 
 Krieg:AddVisualTabs(Window)
@@ -7382,4 +7461,5 @@ Window:Group("YOU")
 Window:CreateSettings()
 if S.TextScale ~= 1 then Krieg:ApplyTextScale(S.TextScale) end
 Krieg:LoadAutoload()
+if Krieg.RestoreVisualState then Krieg:RestoreVisualState() end
 Krieg:Notify({Title = "Krieg Hub", Content = "Visuals loaded", Icon = "sparkles"})
