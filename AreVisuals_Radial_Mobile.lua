@@ -2291,39 +2291,8 @@ local SHADERS = {
 		bloom = {0.8, 38, 0.72}, rays = {0.12, 0.6}},
 }
 
-local shader = {snap = nil, atmo = nil, atmoCreated = false, atmoSnap = nil, cc = nil, bloom = nil, rays = nil, tweens = {}, token = 0, sky = nil, hiddenSkies = {}, skyGuard = nil, lightGuard = nil}
+local shader = {snap = nil, atmo = nil, atmoCreated = false, atmoSnap = nil, cc = nil, bloom = nil, rays = nil, tweens = {}, token = 0, lightGuard = nil}
 local ShaderMod
-
-local darkShaderSky = { ["Night Moon"] = true, ["Aurora"] = true, ["Cyberpunk"] = true, ["Blood Moon"] = true, ["Synthwave"] = true, ["Horror"] = true, ["Galaxy"] = true }
-local function clearShaderSky()
-	if shader.skyGuard then shader.skyGuard:Disconnect(); shader.skyGuard = nil end
-	if shader.sky then shader.sky:Destroy(); shader.sky = nil end
-	for _, old in ipairs(shader.hiddenSkies) do
-		if old.Parent == nil then pcall(function() old.Parent = Lighting end) end
-	end
-	shader.hiddenSkies = {}
-end
-local function applyShaderSky()
-	clearShaderSky()
-	if not ShaderMod.enabled or SkyMod.enabled then return end
-	local preset = SHADERS[ShaderMod.v.Preset]
-	if not preset or not darkShaderSky[preset.name] then return end
-	for _, old in ipairs(Lighting:GetChildren()) do
-		if old:IsA("Sky") then
-			table.insert(shader.hiddenSkies, old)
-			old.Parent = nil
-		end
-	end
-	local sky = Instance.new("Sky")
-	sky.Name = "AreVisualsShaderSky"
-	for face, texture in pairs(SKYBOXES[4].faces) do sky["Skybox" .. face] = texture end
-	sky.Parent = Lighting
-	shader.sky = sky
-	shader.skyGuard = Lighting.ChildAdded:Connect(function(child)
-		if not ShaderMod.enabled or SkyMod.enabled or not child:IsA("Sky") or child == shader.sky then return end
-		child.Parent = nil
-	end)
-end
 
 local function shaderCancel()
 	for _, t in ipairs(shader.tweens) do
@@ -2392,23 +2361,12 @@ ShaderMod = Module({
 				shader.bloom = new("BloomEffect", {Name = "AreVisualsShaderBloom", Intensity = 0, Size = 24, Threshold = 1}, Lighting)
 				shader.rays = new("SunRaysEffect", {Name = "AreVisualsShaderRays", Intensity = 0, Spread = 0.5}, Lighting)
 				shaderApply(false)
-				applyShaderSky()
 				local acc = 0
 				shader.lightGuard = RunService.Heartbeat:Connect(function(dt)
 					acc += dt
 					if acc < 0.2 or not ShaderMod.enabled then return end
 					acc = 0
 					local preset = SHADERS[ShaderMod.v.Preset]
-					if darkShaderSky[preset.name] and not SkyMod.enabled then
-						if not shader.sky or shader.sky.Parent ~= Lighting then
-							applyShaderSky()
-						else
-							for face, texture in pairs(SKYBOXES[4].faces) do
-								local property = "Skybox" .. face
-								if shader.sky[property] ~= texture then shader.sky[property] = texture end
-							end
-						end
-					end
 					if math.abs(Lighting.ClockTime - preset.clock) > 0.02 then Lighting.ClockTime = preset.clock end
 					if math.abs(Lighting.Brightness - preset.bright) > 0.02 then Lighting.Brightness = preset.bright end
 					if Lighting.Ambient ~= preset.ambient then Lighting.Ambient = preset.ambient end
@@ -2422,7 +2380,6 @@ ShaderMod = Module({
 			end)
 		else
 			if shader.lightGuard then shader.lightGuard:Disconnect(); shader.lightGuard = nil end
-			clearShaderSky()
 			shaderCancel()
 			local cc, atmo, bloom, rays = shader.cc, shader.atmo, shader.bloom, shader.rays
 			if cc then
@@ -2458,7 +2415,6 @@ ShaderMod = Module({
 	end,
 	onChange = function()
 		shaderApply(false)
-		applyShaderSky()
 	end,
 })
 

@@ -2004,12 +2004,24 @@ api.Value = index
 paint()
 if not silent and cfg.Callback then task.spawn(cfg.Callback, index) end
 end
+local skyColors = {
+Night = {Color3.fromRGB(42, 63, 110), Color3.fromRGB(93, 123, 169)},
+Red = {Color3.fromRGB(150, 54, 68), Color3.fromRGB(235, 132, 91)},
+Sunset = {Color3.fromRGB(176, 89, 111), Color3.fromRGB(255, 189, 118)},
+}
+local function readable(c)
+local luminance = c.R * .2126 + c.G * .7152 + c.B * .0722
+return luminance < .22 and c:Lerp(Color3.fromRGB(130, 145, 170), .45) or c
+end
 for i, item in ipairs(items) do
-local tile = Create("ImageButton", {Image = item.preview or "", ScaleType = Enum.ScaleType.Crop, BackgroundColor3 = Current.Card2, AutoButtonColor = false, ClipsDescendants = true, LayoutOrder = i, Parent = gridFrame}, {Corner(8)})
-if not item.preview then
-local colors = item.colors or {Color3.fromRGB(90, 160, 215), Color3.fromRGB(205, 228, 245)}
-tile.BackgroundColor3 = colors[1]
-Create("UIGradient", {Rotation = 90, Color = ColorSequence.new(colors[1], colors[2]), Parent = tile})
+local colors = item.colors or skyColors[item.name] or {Color3.fromRGB(90, 160, 215), Color3.fromRGB(205, 228, 245)}
+local tile = Create("TextButton", {Text = "", BackgroundColor3 = readable(colors[1]), AutoButtonColor = false, ClipsDescendants = true, LayoutOrder = i, Parent = gridFrame}, {Corner(8)})
+Create("UIGradient", {Rotation = 90, Color = ColorSequence.new(readable(colors[1]), readable(colors[2])), Parent = tile})
+if item.preview then
+local picture = Create("ImageLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = item.preview, ImageTransparency = .28, ScaleType = Enum.ScaleType.Crop, Parent = tile})
+task.delay(4, function()
+if picture.Parent and not picture.IsLoaded then picture.Visible = false end
+end)
 end
 local shade = Create("Frame", {AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 22), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = .28, BorderSizePixel = 0, Parent = tile})
 Text(shade, tostring(item.name or i), 11, nil, FONT.Semi, {Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), NoTr = true})
@@ -4038,6 +4050,12 @@ Registry, ThemeHooks, Shimmers = {}, {}, {}
 if self.Gui then self.Gui:Destroy() end
 end
 
+-- Replace the previous visual hub instance when the loader is run again.
+local sharedEnv = (type(getgenv) == "function" and getgenv()) or _G
+if sharedEnv.__KriegVisualHub and sharedEnv.__KriegVisualHub.Destroy then
+	pcall(sharedEnv.__KriegVisualHub.Destroy, sharedEnv.__KriegVisualHub)
+end
+sharedEnv.__KriegVisualHub = Krieg
 -- Все визуальные эффекты AreVisuals без второго меню.
 function Krieg:InitVisuals()
 -- LocalScript -> StarterPlayer > StarterPlayerScripts
@@ -6333,39 +6351,8 @@ local SHADERS = {
 		bloom = {0.8, 38, 0.72}, rays = {0.12, 0.6}},
 }
 
-local shader = {snap = nil, atmo = nil, atmoCreated = false, atmoSnap = nil, cc = nil, bloom = nil, rays = nil, tweens = {}, token = 0, sky = nil, hiddenSkies = {}, skyGuard = nil, lightGuard = nil}
+local shader = {snap = nil, atmo = nil, atmoCreated = false, atmoSnap = nil, cc = nil, bloom = nil, rays = nil, tweens = {}, token = 0, lightGuard = nil}
 local ShaderMod
-
-local darkShaderSky = { ["Night Moon"] = true, ["Aurora"] = true, ["Cyberpunk"] = true, ["Blood Moon"] = true, ["Synthwave"] = true, ["Horror"] = true, ["Galaxy"] = true }
-local function clearShaderSky()
-	if shader.skyGuard then shader.skyGuard:Disconnect(); shader.skyGuard = nil end
-	if shader.sky then shader.sky:Destroy(); shader.sky = nil end
-	for _, old in ipairs(shader.hiddenSkies) do
-		if old.Parent == nil then pcall(function() old.Parent = Lighting end) end
-	end
-	shader.hiddenSkies = {}
-end
-local function applyShaderSky()
-	clearShaderSky()
-	if not ShaderMod.enabled or SkyMod.enabled then return end
-	local preset = SHADERS[ShaderMod.v.Preset]
-	if not preset or not darkShaderSky[preset.name] then return end
-	for _, old in ipairs(Lighting:GetChildren()) do
-		if old:IsA("Sky") then
-			table.insert(shader.hiddenSkies, old)
-			old.Parent = nil
-		end
-	end
-	local sky = Instance.new("Sky")
-	sky.Name = "AreVisualsShaderSky"
-	for face, texture in pairs(SKYBOXES[4].faces) do sky["Skybox" .. face] = texture end
-	sky.Parent = Lighting
-	shader.sky = sky
-	shader.skyGuard = Lighting.ChildAdded:Connect(function(child)
-		if not ShaderMod.enabled or SkyMod.enabled or not child:IsA("Sky") or child == shader.sky then return end
-		child.Parent = nil
-	end)
-end
 
 local function shaderCancel()
 	for _, t in ipairs(shader.tweens) do
@@ -6434,23 +6421,12 @@ ShaderMod = Module({
 				shader.bloom = new("BloomEffect", {Name = "AreVisualsShaderBloom", Intensity = 0, Size = 24, Threshold = 1}, Lighting)
 				shader.rays = new("SunRaysEffect", {Name = "AreVisualsShaderRays", Intensity = 0, Spread = 0.5}, Lighting)
 				shaderApply(false)
-				applyShaderSky()
 				local acc = 0
 				shader.lightGuard = RunService.Heartbeat:Connect(function(dt)
 					acc += dt
 					if acc < 0.2 or not ShaderMod.enabled then return end
 					acc = 0
 					local preset = SHADERS[ShaderMod.v.Preset]
-					if darkShaderSky[preset.name] and not SkyMod.enabled then
-						if not shader.sky or shader.sky.Parent ~= Lighting then
-							applyShaderSky()
-						else
-							for face, texture in pairs(SKYBOXES[4].faces) do
-								local property = "Skybox" .. face
-								if shader.sky[property] ~= texture then shader.sky[property] = texture end
-							end
-						end
-					end
 					if math.abs(Lighting.ClockTime - preset.clock) > 0.02 then Lighting.ClockTime = preset.clock end
 					if math.abs(Lighting.Brightness - preset.bright) > 0.02 then Lighting.Brightness = preset.bright end
 					if Lighting.Ambient ~= preset.ambient then Lighting.Ambient = preset.ambient end
@@ -6464,7 +6440,6 @@ ShaderMod = Module({
 			end)
 		else
 			if shader.lightGuard then shader.lightGuard:Disconnect(); shader.lightGuard = nil end
-			clearShaderSky()
 			shaderCancel()
 			local cc, atmo, bloom, rays = shader.cc, shader.atmo, shader.bloom, shader.rays
 			if cc then
@@ -6500,7 +6475,6 @@ ShaderMod = Module({
 	end,
 	onChange = function()
 		shaderApply(false)
-		applyShaderSky()
 	end,
 })
 
@@ -7398,10 +7372,6 @@ function Krieg:AddVisualTabs(window)
 		local enableControl
 		if not mod.noToggle then
 			enableControl = section:Toggle({Name = "Enabled", Default = mod.enabled, Flag = flagPrefix .. "Enabled", Callback = function(on)
-				if on and mod.name == "Sky Shaders" then
-					local skybox = Krieg.Flags.VisualSkyboxEnabled
-					if skybox and skybox.Value then skybox:Set(false) end
-				end
 				local ok, err = pcall(visual.setEnabled, mod, on)
 				if not ok then
 					pcall(visual.setEnabled, mod, not on)
