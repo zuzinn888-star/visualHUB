@@ -2,7 +2,8 @@
 -- AreVisuals (liquid glass menu). Читаемая версия с адаптацией для телефона и ПК.
 --  * тап / ЛКМ по названию  = включить / выключить функцию
 --  * тап по значку ≡ (или ПКМ) = открыть настройки
---  * заголовок панели = перетаскивание
+--  * на телефоне: вкладки и прокручиваемые карточки; на ПК: круговое меню
+--  * заголовок панели на ПК = перетаскивание
 --  * кнопка "Menu" сверху или RightShift = показать / скрыть меню
 
 local Players = game:GetService("Players")
@@ -3789,6 +3790,7 @@ local function buildModule(body, mod, order, ctx)
 			tw(b, 0.25, {BackgroundColor3 = open and ACCENT or Color3.fromRGB(205, 211, 214)})
 		end
 	end
+	mod.openSettings = toggleOpen
 
 	function mod.getH()
 		return MOD_H
@@ -3879,19 +3881,6 @@ new("Frame", {
 	Position = UDim2.fromOffset(20, 129), Size = UDim2.new(1, -40, 0, 2),
 	BackgroundColor3 = WHITE, BackgroundTransparency = 0.2, BorderSizePixel = 0, ZIndex = 3,
 }, center)
-
-local mobileTitle = text(holder, "KREVETKASCRIPTS", 17, {
-	Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -150, 0, 36),
-	FontFace = FONT_BOLD, TextColor3 = WHITE, ZIndex = 4, Visible = false,
-})
-local mobileCanvas = new("ScrollingFrame", {
-	AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 106),
-	Size = UDim2.new(1, -24, 1, -118), BackgroundTransparency = 1,
-	BorderSizePixel = 0, ScrollBarThickness = 4, ScrollBarImageColor3 = ACCENT,
-	ScrollingDirection = Enum.ScrollingDirection.Y, CanvasSize = UDim2.new(),
-	Visible = false, Active = true, ZIndex = 2,
-}, holder)
-onAccent(function() mobileCanvas.ScrollBarImageColor3 = ACCENT end)
 
 local sizeLabel = text(center, "82%", 12, {
 	Position = UDim2.fromOffset(88, 13), Size = UDim2.fromOffset(54, 24),
@@ -4104,14 +4093,198 @@ searchBox:GetPropertyChangedSignal("Text"):Connect(function()
 	applySearch(searchBox.Text)
 end)
 
+-- Телефон: окно в стиле Krieg Hub. Карточки используют те же модули,
+-- что и круговое меню, поэтому состояние функций остаётся общим.
+local function buildCompactUI()
+	local labels = {"Экран", "Мир", "Игрок", "Настройки"}
+	local bg = Color3.fromRGB(12, 14, 20)
+	local cardColor = Color3.fromRGB(24, 27, 34)
+	local muted = Color3.fromRGB(166, 176, 190)
+	local root = new("Frame", {
+		Name = "KriegMobileWindow", AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(700, 450),
+		BackgroundColor3 = bg, BackgroundTransparency = 0.04,
+		BorderSizePixel = 0, ClipsDescendants = true, Visible = false, ZIndex = 5,
+	}, holder)
+	corner(root, 16)
+	edge(root, 1.3, 0.3)
+	local top = new("Frame", {Size = UDim2.new(1, 0, 0, 56), BackgroundColor3 = Color3.fromRGB(18, 20, 27), BorderSizePixel = 0}, root)
+	local logo = new("Frame", {Position = UDim2.fromOffset(14, 10), Size = UDim2.fromOffset(36, 36), BackgroundColor3 = ACCENT, BorderSizePixel = 0}, top)
+	corner(logo, 10)
+	text(logo, "K", 21, {Size = UDim2.fromScale(1, 1), FontFace = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = bg})
+	text(top, "KRIEG HUB", 16, {Position = UDim2.fromOffset(58, 8), Size = UDim2.fromOffset(190, 22), FontFace = FONT_BOLD, TextColor3 = WHITE})
+	text(top, "KREVETKASCRIPTS", 10, {Position = UDim2.fromOffset(58, 29), Size = UDim2.fromOffset(190, 17), TextColor3 = muted})
+	local close = new("TextButton", {Size = UDim2.fromOffset(36, 36), Text = "×", TextSize = 21, TextColor3 = WHITE, BackgroundColor3 = cardColor, BorderSizePixel = 0, AutoButtonColor = false}, top)
+	corner(close, 10)
+	local side = new("Frame", {BackgroundColor3 = Color3.fromRGB(16, 18, 25), BorderSizePixel = 0}, root)
+	local sideLine = new("Frame", {BackgroundColor3 = Color3.fromRGB(67, 72, 84), BackgroundTransparency = 0.45, BorderSizePixel = 0}, root)
+	local content = new("Frame", {BackgroundTransparency = 1}, root)
+	local pageTitle = text(content, labels[1], 20, {Position = UDim2.fromOffset(15, 8), Size = UDim2.new(1, -30, 0, 30), FontFace = FONT_BOLD, TextColor3 = WHITE})
+	local list = new("ScrollingFrame", {BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = ACCENT, ScrollingDirection = Enum.ScrollingDirection.Y, CanvasSize = UDim2.new()}, content)
+	local searchFrame = new("Frame", {BackgroundColor3 = cardColor, BorderSizePixel = 0}, root)
+	corner(searchFrame, 10)
+	local search = new("TextBox", {Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -24, 1, 0), BackgroundTransparency = 1, Text = "", PlaceholderText = "Найти функцию...", PlaceholderColor3 = muted, TextColor3 = WHITE, TextSize = 13, FontFace = FONT_REG, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false}, searchFrame)
+	local profile = new("Frame", {BackgroundColor3 = cardColor, BorderSizePixel = 0}, side)
+	corner(profile, 10)
+	text(profile, player.DisplayName, 13, {Position = UDim2.fromOffset(10, 8), Size = UDim2.new(1, -20, 0, 20), FontFace = FONT_BOLD, TextColor3 = WHITE, TextTruncate = Enum.TextTruncate.AtEnd})
+	text(profile, "@" .. player.Name, 10, {Position = UDim2.fromOffset(10, 27), Size = UDim2.new(1, -20, 0, 17), TextColor3 = muted, TextTruncate = Enum.TextTruncate.AtEnd})
+
+	local tabButtons = {}
+	local selected = 1
+	local listWidth = 320
+	local layoutCards
+	for i = 1, #TABS do
+		local index = i
+		local button = new("TextButton", {Text = labels[i], TextSize = 13, FontFace = FONT_BOLD, TextColor3 = muted, TextXAlignment = Enum.TextXAlignment.Left, BackgroundColor3 = cardColor, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false}, side)
+		corner(button, 9)
+		tabButtons[i] = button
+		button.MouseButton1Click:Connect(function()
+			selected = index
+			pageTitle.Text = labels[index]
+			for j, b in ipairs(tabButtons) do
+				b.BackgroundTransparency = j == index and 0 or 1
+				b.TextColor3 = j == index and WHITE or muted
+			end
+			list.CanvasPosition = Vector2.zero
+			layoutCards()
+		end)
+	end
+
+	local cardHeight = 82
+	for _, tab in ipairs(TABS) do
+		for _, mod in ipairs(tab.mods) do
+			local card = new("Frame", {Name = mod.name, BackgroundColor3 = cardColor, BorderSizePixel = 0, Visible = false}, list)
+			corner(card, 12)
+			new("UIStroke", {Color = Color3.fromRGB(90, 96, 110), Transparency = 0.62, Thickness = 1}, card)
+			local titleButton = new("TextButton", {Position = UDim2.fromOffset(14, 8), Size = UDim2.new(1, -60, 0, 29), Text = mod.name, TextSize = 14, FontFace = FONT_BOLD, TextColor3 = WHITE, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, BackgroundTransparency = 1, AutoButtonColor = false}, card)
+			text(card, mod.noToggle and "Параметры" or "Включить функцию", 11, {Position = UDim2.fromOffset(14, 48), Size = UDim2.new(1, -90, 0, 20), TextColor3 = muted})
+			local settings = new("TextButton", {Position = UDim2.new(1, -42, 0, 8), Size = UDim2.fromOffset(30, 29), Text = "≡", TextSize = 18, TextColor3 = muted, BackgroundTransparency = 1, AutoButtonColor = false}, card)
+			local toggle = new("TextButton", {Position = UDim2.new(1, -64, 0, 44), Size = UDim2.fromOffset(48, 26), Text = mod.noToggle and "Открыть" or "", TextSize = 10, FontFace = FONT_BOLD, TextColor3 = WHITE, BackgroundColor3 = Color3.fromRGB(65, 70, 80), BorderSizePixel = 0, AutoButtonColor = false}, card)
+			corner(toggle, 13)
+			local knob
+			if not mod.noToggle then
+				knob = new("Frame", {Position = UDim2.fromOffset(3, 3), Size = UDim2.fromOffset(20, 20), BackgroundColor3 = WHITE, BorderSizePixel = 0}, toggle)
+				corner(knob, 10)
+			end
+			local previousVisual = mod.setVisual
+			mod.setVisual = function(on)
+				if previousVisual then previousVisual(on) end
+				toggle.BackgroundColor3 = on and ACCENT or Color3.fromRGB(65, 70, 80)
+				if knob then knob.Position = UDim2.fromOffset(on and 25 or 3, 3) end
+			end
+			local function activate()
+				if mod.noToggle then
+					if mod.openSettings then mod.openSettings() end
+				else
+					setEnabled(mod, not mod.enabled)
+				end
+			end
+			titleButton.MouseButton1Click:Connect(activate)
+			toggle.MouseButton1Click:Connect(activate)
+			settings.MouseButton1Click:Connect(function()
+				if mod.openSettings then mod.openSettings() end
+			end)
+			mod.mobileCard = card
+			mod.mobileSwitch = toggle
+		end
+	end
+
+	layoutCards = function()
+		local query = search.Text:lower():match("^%s*(.-)%s*$")
+		local cols = listWidth >= 500 and 2 or 1
+		local gap = 10
+		local cardW = math.floor((listWidth - 16 - gap * (cols - 1)) / cols)
+		local count = 0
+		for i, tab in ipairs(TABS) do
+			for _, mod in ipairs(tab.mods) do
+				local show = i == selected and (query == "" or mod.name:lower():find(query, 1, true) ~= nil)
+				local card = mod.mobileCard
+				card.Visible = show
+				if show then
+					local row = math.floor(count / cols)
+					local col = count % cols
+					card.Position = UDim2.fromOffset(8 + col * (cardW + gap), 8 + row * (cardHeight + gap))
+					card.Size = UDim2.fromOffset(cardW, cardHeight)
+					count += 1
+				end
+			end
+		end
+		list.CanvasSize = UDim2.fromOffset(0, 16 + math.ceil(count / cols) * (cardHeight + gap))
+	end
+	search:GetPropertyChangedSignal("Text"):Connect(layoutCards)
+
+	local function layout(viewport)
+		local portrait = viewport.X < 620
+		local w = math.max(280, math.min(viewport.X - 16, portrait and 600 or 950))
+		local h = math.max(260, math.min(viewport.Y - 20, portrait and 900 or 650))
+		root.Size = UDim2.fromOffset(w, h)
+		close.Position = UDim2.fromOffset(w - 46, 10)
+		if portrait then
+			side.Position = UDim2.fromOffset(8, 58)
+			side.Size = UDim2.fromOffset(w - 16, 44)
+			side.BackgroundTransparency = 1
+			sideLine.Visible = false
+			profile.Visible = false
+			local tabW = math.floor((w - 28) / #tabButtons)
+			for i, button in ipairs(tabButtons) do
+				button.Position = UDim2.fromOffset((i - 1) * (tabW + 4), 2)
+				button.Size = UDim2.fromOffset(tabW, 40)
+				button.TextXAlignment = Enum.TextXAlignment.Center
+			end
+			searchFrame.Position = UDim2.fromOffset(12, 108)
+			searchFrame.Size = UDim2.fromOffset(w - 24, 36)
+			content.Position = UDim2.fromOffset(8, 151)
+			content.Size = UDim2.fromOffset(w - 16, h - 159)
+		else
+			local sideW = math.clamp(math.floor(w * 0.21), 140, 190)
+			side.Position = UDim2.fromOffset(0, 57)
+			side.Size = UDim2.fromOffset(sideW, h - 57)
+			side.BackgroundTransparency = 0
+			sideLine.Visible = true
+			sideLine.Position = UDim2.fromOffset(sideW, 57)
+			sideLine.Size = UDim2.fromOffset(1, h - 57)
+			profile.Visible = h >= 360
+			profile.Position = UDim2.fromOffset(10, h - 57 - 60)
+			profile.Size = UDim2.fromOffset(sideW - 20, 50)
+			for i, button in ipairs(tabButtons) do
+				button.Position = UDim2.fromOffset(10, 16 + (i - 1) * 48)
+				button.Size = UDim2.fromOffset(sideW - 20, 40)
+				button.TextXAlignment = Enum.TextXAlignment.Left
+			end
+			searchFrame.Position = UDim2.fromOffset(w - 286, 10)
+			searchFrame.Size = UDim2.fromOffset(232, 36)
+			content.Position = UDim2.fromOffset(sideW + 1, 57)
+			content.Size = UDim2.fromOffset(w - sideW - 1, h - 57)
+		end
+		pageTitle.Position = UDim2.fromOffset(15, 8)
+		list.Position = UDim2.fromOffset(12, 44)
+		listWidth = content.Size.X.Offset - 24
+		list.Size = UDim2.fromOffset(listWidth, math.max(80, content.Size.Y.Offset - 52))
+		layoutCards()
+	end
+	tabButtons[1].BackgroundTransparency = 0
+	tabButtons[1].TextColor3 = WHITE
+	layoutCards()
+	onAccent(function()
+		logo.BackgroundColor3 = ACCENT
+		list.ScrollBarImageColor3 = ACCENT
+		for _, tab in ipairs(TABS) do
+			for _, mod in ipairs(tab.mods) do
+				if mod.enabled then mod.mobileSwitch.BackgroundColor3 = ACCENT end
+			end
+		end
+	end)
+	return {root = root, close = close, layout = layout}
+end
+local mobileUI = buildCompactUI()
+
 -- плавное движение / авто-высота панелей
 RunService.RenderStepped:Connect(function(dt)
+	if compactLayout then return end
 	local follow = 1 - math.exp(-dt * 16)
 	local appearK = 1 - math.exp(-dt * 9)
 	local holderH = holder.AbsoluteSize.Y / scale
 	local allHidden = true
-	local mobileY = 8
-	local mobilePanelW = math.max(200, math.min(gui.AbsoluteSize.X - 24, 480))
 	for _, p in ipairs(panels) do
 		if p.wait > 0 then
 			p.wait -= dt
@@ -4132,8 +4305,8 @@ RunService.RenderStepped:Connect(function(dt)
 		if visN == 0 then
 			content = 30
 		end
-		local avail = compactLayout and math.max(130, gui.AbsoluteSize.Y - 190) or math.max(90, holderH - p.cy - HEADER - 66)
-		local cap = compactLayout and 330 or ((p.name == "Player" and 185) or (p.name == "World" and 260) or 215)
+		local avail = math.max(90, holderH - p.cy - HEADER - 66)
+		local cap = (p.name == "Player" and 185) or (p.name == "World" and 260) or 215
 		local bodyH = math.min(content, avail, cap)
 		p.col += (((p.collapsed or p.searchEmpty) and 1 or 0) - p.col) * (1 - math.exp(-dt * 12))
 		local openK = 1 - p.col
@@ -4141,31 +4314,19 @@ RunService.RenderStepped:Connect(function(dt)
 		p.body.CanvasSize = UDim2.fromOffset(0, content)
 		p.body.Visible = openK > 0.03
 		local panelH = HEADER + (6 + bodyH + 10) * openK
-		p.frame.Size = UDim2.fromOffset(compactLayout and mobilePanelW or PW, panelH)
+		p.frame.Size = UDim2.fromOffset(PW, panelH)
 
 		p.dim += ((p.searchEmpty and 0.62 or 0) - p.dim) * (1 - math.exp(-dt * 10))
 		p.frame.GroupTransparency = math.clamp(math.max(p.appear, p.dim), 0, 1)
-		if compactLayout then
-			p.frame.Position = UDim2.fromOffset(0, mobileY + p.appear * 12)
-			mobileY += panelH + 12
-		else
-			p.frame.Position = UDim2.new(0.5, p.cx, 0, p.cy + p.appear * 26)
-		end
+		p.frame.Position = UDim2.new(0.5, p.cx, 0, p.cy + p.appear * 26)
 		if p.appear < 0.98 then
 			allHidden = false
 		end
 	end
-	if compactLayout then
-		mobileCanvas.CanvasSize = UDim2.fromOffset(0, mobileY + 8)
-	end
 	local ap = panels[1] and panels[1].appear or 1
 	searchBar.GroupTransparency = math.clamp(ap, 0, 1)
-	if compactLayout then
-		searchBar.Position = UDim2.new(0.5, 0, 0, 57 + ap * 10)
-	else
-		local searchOffset = settingsFlyout.Visible and 82 or 52
-		searchBar.Position = UDim2.new(0.5, 0, 0.5, searchOffset + ap * 20)
-	end
+	local searchOffset = settingsFlyout.Visible and 82 or 52
+	searchBar.Position = UDim2.new(0.5, 0, 0.5, searchOffset + ap * 20)
 	if not menuOpen and allHidden then
 		holder.Visible = false
 	end
@@ -4231,6 +4392,9 @@ local function setMenu(open)
 	if open then
 		holder.Visible = true
 	end
+	mobileUI.root.Visible = compactLayout and open
+	menuBtn.Visible = not (compactLayout and open)
+	if compactLayout and not open then holder.Visible = false end
 	tw(dim, 0.4, {BackgroundTransparency = open and 0.82 or 1})
 	tw(blur, 0.45, {Size = open and BLUR_SIZE or 0})
 	for i, p in ipairs(panels) do
@@ -4238,6 +4402,7 @@ local function setMenu(open)
 		p.wait = open and (i - 1) * 0.07 or 0
 	end
 end
+mobileUI.close.MouseButton1Click:Connect(function() setMenu(false) end)
 menuBtn.MouseButton1Click:Connect(function()
 	if menuDragMoved then
 		menuDragMoved = false
@@ -4251,17 +4416,17 @@ applyResponsiveLayout = function()
 	ring.Visible = not mobile
 	for _, divider in ipairs(ringDividers) do divider.Visible = not mobile end
 	center.Visible = not mobile
-	mobileTitle.Visible = mobile
-	mobileCanvas.Visible = mobile
+	mobileUI.root.Visible = mobile and menuOpen
+	menuBtn.Visible = not (mobile and menuOpen)
+	searchBar.Visible = not mobile
 	menuBtn.Size = UDim2.fromOffset(mobile and 124 or 120, mobile and 44 or 34)
-	searchBar.Size = UDim2.fromOffset(mobile and math.max(200, math.min(gui.AbsoluteSize.X - 24, 480)) or 190, mobile and 42 or 36)
-	if mobile then
-		mobileCanvas.Size = UDim2.fromOffset(math.max(200, math.min(gui.AbsoluteSize.X - 24, 480)), math.max(100, gui.AbsoluteSize.Y - 118))
-	end
+	searchBar.Size = UDim2.fromOffset(190, 36)
 	for _, p in ipairs(panels) do
-		p.frame.Parent = mobile and mobileCanvas or holder
-		p.frame.AnchorPoint = mobile and Vector2.zero or Vector2.new(0.5, 0)
+		p.frame.Parent = holder
+		p.frame.AnchorPoint = Vector2.new(0.5, 0)
+		p.frame.Visible = not mobile
 	end
+	if mobile then mobileUI.layout(gui.AbsoluteSize) end
 	positionFlyout()
 end
 updateScale()
